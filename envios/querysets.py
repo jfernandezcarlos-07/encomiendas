@@ -36,6 +36,9 @@ class EncomiendaQuerySet(models.QuerySet):
         """Precarga las relaciones más usadas (evita el problema N+1)"""
         return self.select_related(
         'remitente', 'destinatario', 'ruta', 'empleado_registro'
+        ).prefetch_related(
+        'historial',                     # precarga todos los historiales
+        'historial__empleado',           # precarga el empleado de cada historial
         )
 
 class ClienteQuerySet(models.QuerySet):

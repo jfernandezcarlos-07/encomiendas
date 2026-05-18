@@ -13,6 +13,9 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 from pathlib import Path
 from decouple import config
 
+
+from datetime import timedelta 
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -42,9 +45,19 @@ INSTALLED_APPS = [
     'envios',
     'clientes',
     'rutas',
+    # Nuevas librerías de API (agregar estas 4 o 5 líneas) <-- NUEVO 
+    'rest_framework', 
+    'rest_framework_simplejwt', 
+    'django_filters', 
+    'drf_spectacular', 
+    'corsheaders',
+    #no esta en al guia
+    'api',
+
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware', # <-- NUEVO: debe ir PRIMERO
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -137,3 +150,124 @@ LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/' 
 # URL a donde redirigir después de logout 
 LOGOUT_REDIRECT_URL = '/accounts/login/' 
+
+
+# ── Django REST Framework ─────────────────────────────────────────
+
+REST_FRAMEWORK = {
+    # Autenticación: JWT por defecto para toda la API
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+
+    # Permisos: requiere autenticación por defecto
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+
+    # Paginación: 15 registros por página
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 15,
+
+    #se agrega de la paggina 68
+    'DEFAULT_VERSIONING_CLASS': ('rest_framework.versioning.URLPathVersioning'),
+    #'DEFAULT_VERSIONING_CLASS': ('rest_framework.versioning.AcceptHeaderVersioning'),
+    
+    'ALLOWED_VERSIONS': ['v1', 'v2'],  # versiones permitidas
+
+    'DEFAULT_VERSION': 'v1',  # versión si no se especifica
+
+    'VERSION_PARAM': 'version',  # nombre del parámetro en la URL
+
+    # Documentación automática con drf-spectacular
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+
+    # Filtros: django-filter como backend por defecto
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    ],
+    #se agreggo de la pagina 97 y 98
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '20/hour',          # 20 requests/hora para no autenticados
+        'user': '500/hour',         # 500 requests/hora para autenticados
+        'login_attempt': '5/min',   # solo para el endpoint de login
+        'cambio_estado': '30/hour',
+        'empleado': '100/min',
+    },
+    'EXCEPTION_HANDLER': 'api.exceptions.encomiendas_exception_handler', #pagina 101 y 102
+    
+}
+
+# ── JWT: configuración de tokens ──────────────────────────────────
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),  # token expira en 1 hora
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),    # refresh expira en 7 días
+    'ROTATE_REFRESH_TOKENS': True,                  # rotar el refresh en cada uso
+    'BLACKLIST_AFTER_ROTATION': True,               #se agrego de la pagina 44
+    'AUTH_HEADER_TYPES': ('Bearer',),               # Authorization: Bearer <token>
+    'USER_ID_FIELD': 'id',                          #se agrego de la pagina 44
+    'USER_ID_CLAIM': 'user_id',                     #se agrego de la pagina 44
+}
+
+# ── CORS: permitir peticiones desde el frontend ───────────────────
+
+CORS_ALLOW_ALL_ORIGINS = True  # en desarrollo
+#se agrego de la pagina 123
+if DEBUG:
+    INSTALLED_APPS += ['silk']
+    MIDDLEWARE += ['silk.middleware.SilkyMiddleware']
+    SILKY_PYTHON_PROFILER = True
+    SILKY_META = True
+
+# En producción reemplazar por:
+# CORS_ALLOWED_ORIGINS = ['https://tu-frontend.com']
+
+# ── Documentación de la API ───────────────────────────────────────
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'API Sistema de Encomiendas',
+    #se agrego de la pagina 53 y 54
+    'DESCRIPTION': '''
+        API REST para gestionar el ciclo de vida de encomiendas.
+        Incluye registro de envíos, cambio de estado, historial
+        y estadísticas del sistema.
+    ''',
+
+    'VERSION': '1.0.0',
+
+    # no mostrar el schema en Swagger
+    'SERVE_INCLUDE_SCHEMA': False,
+
+    # esquemas separados para request y response
+    'COMPONENT_SPLIT_REQUEST': True,
+
+    # mantener el orden del router
+    'SORT_OPERATIONS': False,
+
+    'TAGS': [
+        {'name': 'Encomiendas', 'description': 'Gestión de envíos'},
+        {'name': 'Clientes', 'description': 'Listado de clientes activos'},
+        {'name': 'Rutas', 'description': 'Gestión de rutas'},
+        {'name': 'Auth', 'description': 'Autenticación y autorización'},
+    ],
+    
+}
+
+#pagina 141
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://redis:6379/1',
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        }
+    }
+}
+CACHE_TTL = 60 * 15  # 15 minutos por defecto

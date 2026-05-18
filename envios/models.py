@@ -1,3 +1,4 @@
+#envios/models.py
 from django.db import models
 
 from config.choices import EstadoGeneral, EstadoEnvio
@@ -39,7 +40,7 @@ class Empleado(models.Model):
         verbose_name = 'Empleado'
         verbose_name_plural = 'Empleados'
         ordering = ['apellidos']
-
+    
 
 
 class Encomienda(models.Model):
