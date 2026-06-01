@@ -29,8 +29,9 @@ from django.contrib.messages.views import SuccessMessageMixin
 
 from .models import Encomienda
 from .forms import EncomiendaForm
-
-
+import redis 
+from django.http import JsonResponse 
+from django.conf import settings 
 
 
 # ── Vista mínima ──────────────────────────────────────────────
@@ -218,3 +219,121 @@ class EncomiendaUpdateView(LoginRequiredMixin, SuccessMessageMixin, UpdateView):
             'encomienda_detalle',
             kwargs={'pk': self.object.pk}
         )
+    
+@login_required
+def dashboard(request):
+    """
+    El template renderiza con los datos iniciales de la BD.
+    El WebSocket actualiza los contadores en tiempo real a partir de ese punto.
+    """
+    hoy = timezone.now().date()
+
+    context = {
+        'stats': {
+            'activas': Encomienda.objects.activas().count(),
+            'en_transito': Encomienda.objects.en_transito().count(),
+            'con_retraso': Encomienda.objects.con_retraso().count(),
+            'entregadas_hoy': Encomienda.objects.filter(
+                estado='EN',
+                fecha_entrega_real=hoy
+            ).count(),
+        }
+    }
+
+    return render(
+        request,
+        'envios/dashboard.html',
+        context
+    )
+def health_check(request):
+    """
+    GET /health/
+
+    Verifica que todos los servicios del sistema estén funcionando.
+    Incluye el estado de PostgreSQL, Redis y Channels.
+    """
+
+    estado = {
+        "postgres": False,
+        "redis": False,
+        "channels": False,
+    }
+
+    # ─────────────────────────────────────────────
+    # PostgreSQL
+    # ─────────────────────────────────────────────
+    try:
+        from django.db import connection
+
+        connection.ensure_connection()
+        estado["postgres"] = True
+
+    except Exception as e:
+        estado["postgres_error"] = str(e)
+
+    # ─────────────────────────────────────────────
+    # Redis
+    # ─────────────────────────────────────────────
+    try:
+        r = redis.from_url(
+            settings.REDIS_URL,
+            socket_connect_timeout=2,
+            socket_timeout=2,
+        )
+
+        r.ping()
+
+        info = r.info()
+
+        estado["redis"] = True
+        estado["redis_memoria"] = info.get("used_memory_human")
+        estado["redis_clientes"] = info.get("connected_clients")
+        estado["redis_version"] = info.get("redis_version")
+
+    except Exception as e:
+        estado["redis_error"] = str(e)
+
+    # ─────────────────────────────────────────────
+    # Channels
+    # ─────────────────────────────────────────────
+    try:
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+
+        cl = get_channel_layer()
+
+        async_to_sync(cl.group_send)(
+            "health_check",
+            {"type": "health.ping"}
+        )
+
+        estado["channels"] = True
+
+    except Exception as e:
+        estado["channels_error"] = str(e)
+
+    # ─────────────────────────────────────────────
+    # Empleados conectados (Redis set)
+    # ─────────────────────────────────────────────
+    try:
+        r = redis.from_url(settings.REDIS_URL)
+
+        estado["empleados_conectados"] = r.scard(
+            "encomiendas:group:encomiendas_global"
+        )
+
+    except Exception:
+        estado["empleados_conectados"] = None
+
+    # ─────────────────────────────────────────────
+    # Resultado final
+    # ─────────────────────────────────────────────
+    todo_ok = all([
+        estado["postgres"],
+        estado["redis"],
+        estado["channels"],
+    ])
+
+    http_status = 200 if todo_ok else 503
+
+    return JsonResponse(estado, status=http_status)

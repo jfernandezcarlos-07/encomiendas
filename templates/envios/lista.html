@@ -140,3 +140,85 @@
     {% include 'partials/paginacion.html' with page_obj=encomiendas %}
 </div>
 {% endblock %}
+{% block extra_js %}
+<script>
+// ---------- Clase de reconexión ----------
+class EncomiendaWebSocket {
+    constructor(url) {
+        this.url = url;
+        this.ws = null;
+        this.intentos = 0;
+        this.maxIntentos = 10;
+        this.baseDelay = 1000;
+    }
+
+    conectar() {
+        if (this.ws?.readyState === WebSocket.OPEN) return;
+        this.ws = new WebSocket(this.url);
+        this.ws.onopen = () => {
+            console.log('Conectado');
+            this.intentos = 0;
+            document.getElementById('ws-badge').textContent = 'EN VIVO';
+            document.getElementById('ws-badge').className = 'badge bg-success';
+        };
+        this.ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            this.onMensaje(data);
+        };
+        this.ws.onclose = (event) => {
+            document.getElementById('ws-badge').textContent = 'Reconectando...';
+            document.getElementById('ws-badge').className = 'badge bg-warning';
+            if (event.code === 4001) {
+                window.location.href = '/accounts/login/';
+                return;
+            }
+            if (event.code === 1000) return;
+            const delay = Math.min(this.baseDelay * Math.pow(2, this.intentos), 30000);
+            this.intentos++;
+            if (this.intentos <= this.maxIntentos) {
+                console.log(`Reconectando en ${delay/1000}s (intento ${this.intentos})`);
+                setTimeout(() => this.conectar(), delay);
+            } else {
+                document.getElementById('ws-badge').textContent = 'Desconectado';
+                document.getElementById('ws-badge').className = 'badge bg-danger';
+            }
+        };
+        this.ws.onerror = (error) => console.error('WebSocket error:', error);
+    }
+
+    onMensaje(data) {
+        // Sobrescribir según necesidad
+        console.log('Mensaje recibido:', data);
+    }
+
+    enviar(data) {
+        if (this.ws?.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify(data));
+        }
+    }
+
+    desconectar() {
+        this.intentos = this.maxIntentos + 1;
+        this.ws?.close(1000, 'Desconexion manual');
+    }
+}
+
+// ---------- Inicialización ----------
+document.addEventListener('DOMContentLoaded', function() {
+    const wsEnc = new EncomiendaWebSocket(
+        'ws://' + window.location.host + '/ws/encomiendas/'
+    );
+    // Definir qué hacer con cada mensaje recibido
+    wsEnc.onMensaje = (data) => {
+        if (data.tipo === 'estado_cambio') {
+            mostrarToast(data);   // función definida en otro lugar
+        }
+        if (data.tipo === 'stats_actualizado') {
+            actualizarDashboard(data.stats);
+        }
+    };
+    wsEnc.conectar();
+});
+</script>
+
+{% endblock %}

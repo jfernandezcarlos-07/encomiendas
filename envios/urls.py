@@ -31,4 +31,7 @@ urlpatterns = [
 
     path('encomiendas/nueva/',views_cbv.EncomiendaCreateView.as_view(),name='encomienda_crear' ),
 
-    path('encomiendas/<int:pk>/editar/', views_cbv.EncomiendaUpdateView.as_view(), name='encomienda_editar' ),]
+    path('encomiendas/<int:pk>/editar/', views_cbv.EncomiendaUpdateView.as_view(), name='encomienda_editar' ),
+    
+    path('health/', views.health_check, name='health'),
+]

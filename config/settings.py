@@ -13,7 +13,8 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 from pathlib import Path
 from decouple import config
 
-
+import sys
+import os
 from datetime import timedelta 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -53,6 +54,7 @@ INSTALLED_APPS = [
     'corsheaders',
     #no esta en al guia
     'api',
+    'channels',
 
 ]
 
@@ -88,8 +90,41 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.asgi.application' # pagons 33 de la seecion 7
+#CHANNEL_LAYERS = {
+    #'default': {
+        #'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        #'CONFIG': {
+            #'hosts': [('redis', 6379)],
+        #},
+    #},
+#}
+#if 'test' in sys.argv or 'pytest' in sys.modules:
+    #CHANNEL_LAYERS = {'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer',}}
 
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://redis:6379/1')
 
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [os.environ.get('REDIS_URL', 'redis://redis:6379/1')], #[REDIS_URL],
+            'prefix': 'encomiendas',
+            'capacity': 100,
+            'expiry': 60,
+            'group_expiry': 86400, 
+            'channel_capacity': {
+                'ws.connect.*': 200, 
+                'http.request': 200, 
+        },
+    },
+}}
+if 'pytest' in sys.modules or 'test' in sys.argv:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        }
+    }
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 

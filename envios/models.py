@@ -13,7 +13,8 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 from decimal import Decimal, ROUND_HALF_UP
 from .querysets import EncomiendaQuerySet
-
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
 
 
 class Empleado(models.Model):
@@ -130,7 +131,6 @@ class Encomienda(models.Model):
         estado_anterior = self.estado
         self.estado = nuevo_estado
         if nuevo_estado == EstadoEnvio.ENTREGADO:
-            from django.utils import timezone
             self.fecha_entrega_real = timezone.now().date()
         self.save()
  
@@ -141,8 +141,61 @@ class Encomienda(models.Model):
             empleado=empleado,
             observacion=observacion
         )
+        self._notificar_cambio_estado(estado_anterior, nuevo_estado, empleado)
         return self
-    
+    ##seccion 7
+    def _notificar_cambio_estado(self, estado_anterior, estado_nuevo, empleado):
+        hoy = timezone.now().date()
+        channel_layer = get_channel_layer()
+
+        mensaje = {
+            "encomienda_id": self.pk,
+            "codigo": self.codigo,
+            "estado_anterior": estado_anterior,
+            "estado_nuevo": estado_nuevo,
+            "empleado": str(empleado),
+            "timestamp": timezone.now().isoformat(),
+        }
+
+        # Notificar al grupo global (feed de actividad)
+        async_to_sync(channel_layer.group_send)(
+            "encomiendas_global",
+            {
+                "type": "encomienda_estado_cambio",
+                **mensaje,
+            }
+        )
+
+        # Estadísticas actualizadas para el dashboard
+        stats = {
+            "activas": Encomienda.objects.activas().count(),
+            "en_transito": Encomienda.objects.en_transito().count(),
+            "con_retraso": Encomienda.objects.con_retraso().count(),
+            "entregadas_hoy": Encomienda.objects.filter(
+                estado="EN",
+                fecha_entrega_real=hoy
+            ).count(),
+        }
+
+        # Actualizar contadores del dashboard
+        async_to_sync(channel_layer.group_send)(
+            "dashboard",
+            {
+                "type": "dashboard_actualizar",
+                "stats": stats,
+            }
+        )
+
+        # Enviar también el evento al feed del dashboard
+        async_to_sync(channel_layer.group_send)(
+            "dashboard",
+            {
+                "type": "estado_cambio",
+                **mensaje,
+            }
+        )
+
+
     def calcular_costo(self):
         """
         Calcula el costo del envío basándose en el precio
@@ -213,3 +266,4 @@ class HistorialEstado(models.Model):
     class Meta:
         db_table = 'historial_estados'
         ordering = ['-fecha_cambio']
+
