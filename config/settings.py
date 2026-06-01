@@ -180,11 +180,11 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 # URL a donde redirigir si el usuario no está autenticado 
-LOGIN_URL = '/accounts/login/' 
+LOGIN_URL = '/login/'#'/accounts/login/' 
 # URL a donde redirigir después de un login exitoso 
 LOGIN_REDIRECT_URL = '/' 
 # URL a donde redirigir después de logout 
-LOGOUT_REDIRECT_URL = '/accounts/login/' 
+LOGOUT_REDIRECT_URL = '/login/'#'/accounts/login/' 
 
 
 # ── Django REST Framework ─────────────────────────────────────────
